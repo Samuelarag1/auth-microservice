@@ -1,39 +1,91 @@
-// src/auth/auth.controller.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
-import * as request from 'supertest';
-import { INestApplication } from '@nestjs/common';
-import { AppModule } from 'src/app.module';
+import { AuthController } from '../auth.controller';
+import { AuthService } from '../../services/auth.service';
+import { CreateUserDTO } from '../../dtos/create-user.dto';
+import { LoginDTO } from '../../dtos/login-user.dto';
+import { BadRequestException } from '@nestjs/common';
 
-describe('AuthController (e2e)', () => {
-  let app: INestApplication;
+describe('AuthController', () => {
+  let authController: AuthController;
+  let authService: AuthService;
 
-  beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+  const mockAuthService = {
+    create: jest.fn(),
+    login: jest.fn(),
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [AuthController],
+      providers: [
+        {
+          provide: AuthService,
+          useValue: mockAuthService,
+        },
+      ],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
-    await app.init();
+    authController = module.get<AuthController>(AuthController);
+    authService = module.get<AuthService>(AuthService);
   });
 
-  it('/auth/register (POST)', () => {
-    return request(app.getHttpServer())
-      .post('/auth/register')
-      .send({ username: 'testuser', password: 'password' })
-      .expect(201);
-  });
+  describe('registerUser', () => {
+    it('should register a user and return a token', async () => {
+      const createUserDto: CreateUserDTO = {
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      const token = 'test-token';
+      mockAuthService.create.mockResolvedValue(token);
 
-  it('/auth/login (POST)', () => {
-    return request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ username: 'testuser', password: 'password' })
-      .expect(200)
-      .expect((res) => {
-        expect(res.body).toHaveProperty('access_token');
+      expect(await authController.registerUser(createUserDto)).toEqual({
+        token,
       });
+      expect(mockAuthService.create).toHaveBeenCalledWith(createUserDto);
+      expect(mockAuthService.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw BadRequestException if user creation fails', async () => {
+      const createUserDto: CreateUserDTO = {
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      mockAuthService.create.mockRejectedValue(
+        new BadRequestException('User exists'),
+      );
+
+      await expect(authController.registerUser(createUserDto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
   });
 
-  afterAll(async () => {
-    await app.close();
+  describe('loginUser', () => {
+    it('should log in a user and return a token', async () => {
+      const loginDto: LoginDTO = {
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      const token = 'test-token';
+      mockAuthService.login.mockResolvedValue(token);
+
+      expect(await authController.loginUser(loginDto)).toEqual({ token });
+      expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
+      expect(mockAuthService.login).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw BadRequestException if login fails', async () => {
+      const loginDto: LoginDTO = {
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      mockAuthService.login.mockRejectedValue(
+        new BadRequestException('Invalid credentials'),
+      );
+
+      await expect(authController.loginUser(loginDto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
   });
 });
